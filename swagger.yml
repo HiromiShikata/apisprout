@@ -1,0 +1,1395 @@
+openapi: 3.0.0
+servers:
+  - description: local - mock
+    url: http://localhost:8000
+  - description: local - server
+    url: http://localhost:3000
+
+info:
+  version: 0.0.1
+  title: API
+  description: |
+    # モデリング・命名規則について
+    - プライマリのIDについて
+      - ID: 自動生成のUUID
+      - Number: 手動採番の番号, 予約語と重なるのでモデル名+Number
+    - DayTraining モデルのIDの 「DAYトレーニング番号」は、他の資料で言うところの DAYトレーニング番号です
+      - 経緯
+          - モデル名が "Day" だと意味が違ってしまいカレンダーなど日の概念を扱うようになった時に混乱する
+          - モデルが表現していることは日単位のトレーニングメニューなので、「DAYトレーニング番号」の表現にはトレーニングが略されていると考える
+          - 他のモデルとID名の規則を鑑みてこのモデルのみ変えるメリットがない
+          - 開発者の会話が混乱しないよう厳密な方を選択しましたがUIでの表現を制限するものではありません
+
+
+    # 3末スコープ検証シナリオ
+    ## サービス開始前
+    1. 運営者を作成(consoleから直接)
+    ## 運営者がwebにて
+    1. ログイン(client直接)
+    1. 患者アカウント作成 POST /patients
+    1. 患者アカウント一覧表示 GET /patients
+    1. 患者アカウント詳細表示 GET /patients/{patientId}
+    1. 患者アカウント編集 PUT /patients/{patientId}
+    1. ログアウト (clientで認証情報削除のみ)
+
+    ## 患者がアプリにて
+    1. 患者がアプリでログイン (client直接)
+    1. 安静時心拍数など保存 [PUT /patients/{patientId}](#/app/updatePatient)
+    1. 次の訓練メニュー一覧を取得 [GET /patients/{patientId}/dayTrainings/next](#/app/getDayTrainingNext)
+    1. 運動実施 [POST /patients/{patientId}/dayTrainingLogs](#/app/addPatientDayTrainingLog)
+    1. 下記表示
+        - 基本情報 [GET /patients/{patientId}](/#/app/getPatient)
+        - 訓練記録取得 [GET /patients/{patientId}/dayTrainingLogs](#/app/getPatientDayTrainingLogs)
+    1. 運動履歴詳細を表示 [GET /patients/{patientId}/dayTrainingLogs/{finishedAt}](#/app/getPatientDayTrainingLog)
+    1. ログアウト (clientで認証情報削除のみ)
+
+    ## 患者がwebで
+    1. ログイン (client 直接)
+    1. 下記表示
+        - 患者情報 /hospitals/{hospitalId}/patients/{patientId}
+    1. 運動履歴詳細を表示
+        - アプリと同じ
+    1. ログアウト (clientで認証情報削除のみ)
+
+
+
+    # メイン検証シナリオ
+    ## サービス開始前
+    1. 運営者を作成(consoleから直接)
+    ## 運営者がwebにて
+    1. ログイン(client直接)
+    1. 医療機関作成 POST /hospitals
+    1. 医療機関一覧表示 GET /hospitals
+    1. 医療機関詳細情報表示 GET /hospitals/{hospitalId}
+    1. 医療機関情報更新 PUT /hospitals/{hosptalId}
+    1. 医療機関に医師アカウント作成 POST /hospitals/{hospitalId}/doctors
+    1. 医療機関の医師アカウント一覧表示 GET /hospitals/{hospitalId}/doctors
+    1. 医療機関の医師アカウント編集 PUT /hospitals/{hospitalId}/doctors/{doctorId}
+    1. 患者アカウント作成 POST /patients
+    1. 患者アカウント一覧表示 GET /patients
+    1. 患者アカウント詳細表示 GET /patients/{patientId}
+    1. 患者アカウント編集 PUT /patients/{patientId}
+    1. ログアウト (clientで認証情報削除のみ)
+
+    ## 患者がアプリにて
+    1. 患者がアプリでログイン (client直接)
+    1. 安静時心拍数など保存 [PUT /patients/{patientId}](#/app/updatePatient)
+    1. 次の訓練メニュー一覧を取得 [GET /patients/{patientId}/dayTrainings/next](#/app/getDayTrainingNext)
+    1. 運動実施 [POST /patients/{patientId}/dayTrainingLogs](#/app/addPatientDayTrainingLog)
+    1. 下記表示
+        - 基本情報 [GET /patients/{patientId}](/#/app/getPatient)
+        - 訓練記録取得 [GET /patients/{patientId}/dayTrainingLogs](#/app/getPatientDayTrainingLogs)
+    1. 運動履歴詳細を表示 [GET /patients/{patientId}/dayTrainingLogs/{finishedAt}](#/app/getPatientDayTrainingLog)
+    1. ログアウト (clientで認証情報削除のみ)
+
+
+    ## 患者がwebで
+    1. ログイン (client 直接)
+    1. 下記表示
+        - 患者情報 /hospitals/{hospitalId}/patients/{patientId}
+    1. 運動履歴詳細を表示
+        - アプリと同じ
+    1. ログアウト (clientで認証情報削除のみ)
+
+    ## 医師がwebで
+    1. ログイン(client直接)
+    1. 患者一覧表示 GET /hospitals/{hospitalId}/patients
+    1. 患者詳細、過去30日の評価点数表示
+        - GET /patients/{patientId}
+        - GET /patients/{patientId}/dayTrainingLogs?start=&end=
+    1. 患者のトレーニング詳細表示
+        - GET /patients/{patientsId}/dayTrainingLogs/{finishedAt}
+
+    1. ログアウト (clientで認証情報削除のみ)
+
+
+
+paths:
+  /hc:
+    get:
+      operationId: healthCheck
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: string
+  /hospitals:
+    get:
+      operationId: getHospitals
+      summary: 医療機関一覧取得
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Hospital'
+              examples:
+                json:
+                  $ref: '#/components/examples/Hospitals'
+
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: addHospital
+      requestBody:
+        description: 医療機関新規登録
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Hospital'
+      responses:
+        201:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hospital'
+              examples:
+                json:
+                  $ref: '#/components/examples/Hospital'
+        500:
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /hospitals/{hospitalId}:
+    get:
+      summary: 医療機関を1件取得
+      operationId: getHospitalById
+      parameters:
+        - name: hospitalId
+          in: path
+          description: 医療機関ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hospital'
+              examples:
+                json:
+                  $ref: '#/components/examples/Hospital'
+
+        500:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: 医療機関の更新
+      description: |
+        戻り値はありません
+      operationId: updateHospital
+      parameters:
+        - name: hospitalId
+          in: path
+          description: 医療機関ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+      requestBody:
+        description: 医療機関の更新内容
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Hospital'
+      responses:
+        204:
+          description: 更新成功
+        500:
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+
+  /hospitals/{hospitalId}/doctors:
+    get:
+      operationId: getDoctors
+      summary: 医師一覧取得
+      parameters:
+        - name: hospitalId
+          in: path
+          description: 医療機関ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Doctor'
+              examples:
+                json:
+                  $ref: '#/components/examples/Doctors'
+
+        500:
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: addDoctor
+      parameters:
+        - name: hospitalId
+          in: path
+          description: 医療機関ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+      requestBody:
+        description: 医師登録
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Doctor'
+      responses:
+        201:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Doctor'
+              examples:
+                json:
+                  $ref: '#/components/examples/Doctor'
+        500:
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /hospitals/{hospitalId}/doctors/{doctorId}:
+    get:
+      summary: 医師を1件取得
+      operationId: getDoctorById
+      parameters:
+        - name: hospitalId
+          in: path
+          description: 医療機関ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+        - name: doctorId
+          in: path
+          description: 医師ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Doctor'
+              examples:
+                json:
+                  $ref: '#/components/examples/Doctor'
+
+        500:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: 医師の更新
+      description: |
+        戻り値はありません
+      operationId: updateDoctor
+      parameters:
+        - name: hospitalId
+          in: path
+          description: 医療機関ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+        - name: doctorId
+          in: path
+          description: 医師ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+      requestBody:
+        description: 医師の更新内容
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Doctor'
+      responses:
+        204:
+          description: No Content
+        500:
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+
+  /hospitals/{hospitalId}/patients:
+    get:
+      operationId: getPatients
+      summary: 患者一覧取得
+      parameters:
+        - name: hospitalId
+          in: path
+          description: 医療機関ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Patient'
+              examples:
+                json:
+                  $ref: '#/components/examples/Patients'
+
+        500:
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /patients:
+    post:
+      operationId: addPatient
+      requestBody:
+        description: 患者登録
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Patient'
+      responses:
+        201:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+              examples:
+                json:
+                  $ref: '#/components/examples/Patient'
+        500:
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /patients/{patientId}:
+    get:
+      summary: 患者を1件取得
+      operationId: getPatientById
+      tags:
+        - app
+      parameters:
+        - name: patientId
+          in: path
+          description: 患者ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+              examples:
+                json:
+                  $ref: '#/components/examples/Patient'
+
+        500:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: 患者の更新
+      tags:
+        - app
+      description: |
+        戻り値はありません
+      operationId: updatePatient
+      parameters:
+        - name: hospitalId
+          in: path
+          description: 医療機関ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+        - name: patientId
+          in: path
+          description: 患者ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+      requestBody:
+        description: 患者の更新内容
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Patient'
+      responses:
+        204:
+          description: 更新成功
+        500:
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+
+  /patients/{patientId}/dayTrainingLogs:
+    get:
+      operationId: getPatientDayTrainingLogs
+      summary: 訓練記録一覧取得
+      parameters:
+        - name: patientId
+          in: path
+          description: 患者ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PatientDayTrainingLog'
+              examples:
+                json:
+                  $ref: '#/components/examples/PatientDayTrainingLogs'
+
+        500:
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags:
+        - app
+      summary: 訓練記録保存
+      operationId: addPatientDayTrainingLog
+      parameters:
+        - name: hospitalId
+          in: path
+          description: 医療機関ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+        - name: patientId
+          in: path
+          description: 患者ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatientDayTrainingLog'
+      responses:
+        201:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientDayTrainingLog'
+              examples:
+                json:
+                  $ref: '#/components/examples/PatientDayTrainingLog'
+        500:
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /patients/{patientId}/dayTrainingLogs/{finishedAt}:
+    get:
+      operationId: getPatientDayTrainingLog
+      summary: 訓練記録詳細取得
+      parameters:
+        - name: patientId
+          in: path
+          description: 患者ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+        - name: finishedAt
+          in: path
+          description: 終了日時
+          required: true
+          schema:
+            type: string
+            example: '2019-01-14 19:27:51'
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientDayTrainingLog'
+              examples:
+                json:
+                  $ref: '#/components/examples/PatientDayTrainingLog'
+
+        500:
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+
+
+  /patients/{patientId}/dayTrainings/next:
+    get:
+      tags:
+        - app
+      summary: 次の訓練を1件取得
+      operationId: getDayTrainingNext
+      parameters:
+        - name: patientId
+          in: path
+          description: 患者ID
+          required: true
+          schema:
+            type: string
+            example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DayTraining'
+              examples:
+                json:
+                  $ref: '#/components/examples/DayTraining'
+
+        500:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /dayTrainings:
+    get:
+      tags:
+        - app
+      operationId: getDayTrainings
+      summary: 訓練情報一覧取得
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Patient'
+              examples:
+                json:
+                  $ref: '#/components/examples/Patients'
+
+        500:
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+
+
+
+components:
+  schemas:
+    User:
+      description: |
+        下記も User に含むがcognito で管理しAPIでは扱わない
+        - ログインアカウント
+        - ログインパスワード
+        - 役割: role [operator, doctor, patient]
+      properties:
+        id:
+          title: ユーザーID
+          description: cognito & Dynamo で保持する。 operatorId, doctorId, patientId と同じ
+          type: string
+          example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+        name:
+          type: string
+          example: 山田花子
+        createdAt:
+          type: string
+          example: '2018-12-16 13:22:22'
+    Operator:
+      title: 運営者
+      allOf:
+        - $ref: '#/components/schemas/User'
+    Hospital:
+      title: 医療機関
+      properties:
+        id:
+          type: string
+          example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+        name:
+          type: string
+          example: サンプル病院
+        createdAt:
+          type: string
+          example: '2018-12-16 13:22:22'
+    Doctor:
+      title: 医師
+      allOf:
+        - $ref: '#/components/schemas/User'
+      properties:
+        hospitalId:
+          type: string
+    Patient:
+      title: 患者
+      description: |
+        身長、体重など増えたらこちらに追加
+
+      allOf:
+        - $ref: '#/components/schemas/User'
+      properties:
+        hospitalIds:
+          type: array
+          items:
+            type: string
+          example: [8c23f3d4-2446-43b0-b472-b6aa58899f59, 8c23f3d4-2446-43b0-b472-b6aa58899f59]
+        gender:
+          type: number
+          enum: [1, 2]
+          description: |
+            1: 男性
+            2: 女性 ...
+          example: 2
+        birthdayYmd:
+          type: string
+          description: yyyy-MM-dd
+          example: 1985-01-01
+        heartRate:
+          type: number
+          format: float
+
+    Resistance:
+      title: レジスタンス運動
+      properties:
+        resistanceNumber:
+          title: レジスタンス運動番号(ID)
+          type: number
+          example: 1
+        name:
+          title: レジスタンス運動名
+          example: プッシュアップ
+          type: string
+        level:
+          title: 強度
+          example: 低強度
+          type: string
+        depthRepsThreshold:
+          title: 深さ（回数閾値）
+          type: number
+          example: 90
+        depthSuccessThreshold:
+          title: 深さ（成功値）
+          type: number
+          example: 90
+        form:
+          title: フォーム
+          type: number
+          example: 90
+          description: |
+            値の範囲: -180～180
+        sets:
+          title: セット数
+          type: number
+          example: 3
+        reps:
+          title: 回数
+          type: number
+          example: 10
+
+    AerobicMotion:
+      title: 有酸素運動モーション
+      properties:
+        aerobicMotionNumber:
+          title: 有酸素運動モーション番号
+          type: number
+          example: 1
+        name:
+          title: 有酸素運動モーション名
+          type: string
+          example: マーチ
+        seconds:
+          title: 秒数
+          type: number
+          example: 32
+
+    Aerobic:
+      title: 有酸素運動
+      properties:
+        AerobicNumber:
+          title: 有酸素運動番号(ID)
+          type: number
+          example: 1
+        name:
+          type: string
+          title: 有酸素運動名
+          example: 有酸素運動1
+        level:
+          title: 強度
+          example: 低強度
+          type: string
+        min:
+          title: 強度（下）
+          type: number
+          example: 40
+          description: 最大2桁
+
+        max:
+          title: 強度（上）
+          type: number
+          example: 50
+          description: 最大2桁
+        minutes:
+          title: 分数
+          type: number
+          example: 30
+          description: 最大2桁
+
+        aerobicMotionNumbers:
+          title: 有酸素運動モーション番号(複数)
+          type: array
+          items:
+            type: number
+          example: [1,2,3]
+        aerobicMotions:
+          title: 有酸素運動モーション(複数)
+          type: array
+          items:
+            $ref: '#/components/schemas/AerobicMotion'
+
+
+    DayTraining:
+      title: 訓練情報
+      properties:
+        dayTrainingNumber:
+          title: DAYトレーニング番号(ID)
+          type: number
+          example: 1
+        resistanceNumbers:
+          title: トレーニング対象のレジスタンス運動番号(複数)
+          type: array
+          items:
+            type: number
+          example: [1,2,3,4,5]
+        resistances:
+          title: レジスタンス
+          type: array
+          items:
+            $ref: '#/components/schemas/Resistance'
+        aerobicNumber:
+          title: 有酸素運動番号
+          type: number
+          example: 1
+        aerobic:
+          title: 有酸素運動
+          type: object
+          $ref: '#/components/schemas/Aerobic'
+
+    PatientDayTrainingLog:
+      title: 訓練結果
+      properties:
+        patientId:
+          title: 患者ID
+          type: string
+          example: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+        finishedAt:
+          title: 終了時刻
+          type: string
+          description: format yyyy-MM-dd hh:mm:ss
+          example: '2019-01-14 13:14:18'
+        dayTrainingNumber:
+          title: DAYトレーニング番号
+          type: number
+          example: 1
+        evalution:
+          title: 達成状況
+          type: number
+          enum: [1,2,3,4,5]
+          description: |
+            保存時、達成状況の情報はサーバー側で付加しますのでアプリからの送信は不要です
+            1: ×
+            2: △
+            3: ○
+            4: ◎
+          example: 4
+        resistanceLogs:
+          title: レジスタンス記録(複数)
+          type: array
+          items:
+            properties:
+              resistanceNumber:
+                title: レジスタンス運動番号
+                type: number
+                example: 1
+              name:
+                title: レジスタンス運動名
+                type: string
+                example: プッシュアップ
+              level:
+                title: 強度
+                type: string
+                example: 低強度
+              evalution:
+                title: 達成状況
+                type: number
+                description: |
+                  保存時、達成状況の情報はサーバー側で付加しますのでアプリからの送信は不要です
+                  1: ×
+                  2: △
+                  3: ○
+                  4: ◎
+                example: 4
+              depthCountThreshold:
+                title: 深さ（回数閾値）
+                type: number
+                example: 90
+              depthSuccessThreshold:
+                title: 深さ（成功値）
+                type: number
+                example: 90
+              form:
+                title: フォーム
+                type: number
+                example: 90
+              reps:
+                title: 回数
+                type: number
+                example: 3
+              sets:
+                title: セット数
+                type: number
+                example: 2
+              setLogs:
+                title: セット毎の記録
+                type: array
+                items:
+                  properties:
+                    isSuccess:
+                      title: 成功
+                      type: array
+                      items:
+                        type: number
+                        example: 1
+                        enum: [0,1]
+                        description: |
+                          0: 失敗
+                          1: 成功
+                      example: [1,1,1]
+                    depth:
+                      title: 深さ
+                      type: array
+                      items:
+                        type: number
+                      example: [45,60]
+                    form:
+                      title: フォーム
+                      type: array
+                      items:
+                        type: number
+                      example: [45,60]
+        aerobicLog:
+          title: 有酸素運動記録
+          properties:
+            aerobicNumber:
+              title: 有酸素運動番号
+              type: number
+              example: 1
+            name:
+              title: 有酸素運動名
+              type: string
+              example: 有酸素運動1
+            label:
+              title: 強度
+              type: string
+              example: 低強度
+            min:
+              title: 強度(下)
+              type: number
+              example: 40
+            max:
+              title: 強度(上)
+              type: number
+              example: 50
+            aerobicMotionNumbers:
+              title: 有酸素モーション番号(複数)
+              type: array
+              items:
+                type: number
+              example: [1,2,3]
+            goalDurationMinutes:
+              title: 指定分数
+              type: number
+              example: 30
+            actualDurationMinutes:
+              title: 実施分数
+              type: number
+              example: 40
+            heatRates:
+              title: 1秒毎の心拍数データ
+              type: array
+              items:
+                type: number
+              example: [100, 100, 100]
+
+    # ## ゲーム側のデータ (TODO)
+    # - アイテム、キャラクターの所有データ?
+
+    Error:
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: '処理に失敗しました。'
+  examples:
+    Hospital:
+      value:
+        id: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+        name: サンプル病院
+        createdAt: '2018-12-16 13:22:22'
+    Hospitals:
+      value:
+        - id: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+          name: サンプル病院
+          createdAt: '2018-12-16 13:22:22'
+    Doctor:
+      value:
+        id: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+        name: 山田花子
+        createdAt: '2018-12-16 13:22:22'
+    Doctors:
+      value:
+        - id: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+          name: 山田花子
+          createdAt: '2018-12-16 13:22:22'
+        - id: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+          name: 山田花子
+          createdAt: '2018-12-16 13:22:22'
+    Patient:
+      value:
+        id: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+        name: 山田花子
+        hospitalIds: [8c23f3d4-2446-43b0-b472-b6aa58899f59, 8c23f3d4-2446-43b0-b472-b6aa58899f59]
+        gender: 2
+        birthdayYmd: 1985-05-7
+        createdAt: '2018-12-16 13:22:22'
+    Patients:
+      value:
+        - id: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+          name: 山田花子
+          hospitalIds: [8c23f3d4-2446-43b0-b472-b6aa58899f59, 8c23f3d4-2446-43b0-b472-b6aa58899f59]
+          gender: 2
+          birthdayYmd: 1985-05-7
+          createdAt: '2018-12-16 13:22:22'
+        - id: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+          name: 山田花子
+          hospitalIds: [8c23f3d4-2446-43b0-b472-b6aa58899f59, 8c23f3d4-2446-43b0-b472-b6aa58899f59]
+          gender: 2
+          birthdayYmd: 1985-05-7
+          createdAt: '2018-12-16 13:22:22'
+
+    Resistance:
+      value:
+        resistanceNumber: 1
+        name: プッシュアップ
+        level: 低強度
+        depthRepsThreshold: 90
+        depthSuccessThreshold: 90
+        form: 90
+        sets: 3
+        reps: 10
+
+    Aerobic:
+      value:
+        aerobicNumber: 1
+        name: 有酸素運動1
+        label: 低強度
+        min: 40
+        max: 50
+        minutes: 30
+        aerobicMotionNumbers: [1,2,3]
+
+    DayTraining:
+      value:
+        id: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+        dayTrainingNumber: 1
+        resistanceNumbers: [1,2]
+        resistances:
+          - resistanceNumber: 1
+            name: プッシュアップ
+            level: 低強度
+            depthRepsThreshold: 90
+            depthSuccessThreshold: 90
+            form: 90
+            sets: 3
+            reps: 10
+          - resistanceNumber: 2
+            name: プッシュアップ
+            label: 中強度
+            form: 90
+            sets: 4
+            reps: 10
+            depthRepsThreshold: 90
+            depthSuccessThreshold: 90
+        aerobicNumber: 1
+        aerobic:
+          aerobicNumber: 1
+          name: 有酸素運動1
+          level: 低強度
+          aerobicMotionNumbers: [1,2,3]
+          min: 40
+          max: 50
+          minutes: 30
+
+
+    PatientDayTrainingLog:
+      value:
+        patientId: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+        finishedAt: '2019-01-14 13:14:18'
+        dayTrainingNumber: 1
+        evalution: 4
+        resistanceLogs:
+          - resistanceNumber: 1
+            name: プッシュアップ
+            label: 低強度
+            depthRepsThreshold: 90
+            depthSuccessThreshold: 90
+            form: 90
+            sets: 2
+            reps: 3
+            evalution: 4
+            setLogs:
+              - isSuccess:
+                  - 1
+                  - 1
+                  - 0
+                depth:
+                  - 45
+                  - 45
+                  - 60
+                form:
+                  - 45
+                  - 45
+                  - 60
+              - isSuccess:
+                  - 1
+                  - 1
+                  - 0
+                depth:
+                  - 45
+                  - 45
+                  - 60
+                form:
+                  - 45
+                  - 45
+                  - 60
+          - resistanceNumber: 1
+            name: プッシュアップ
+            level: 低強度
+            depthRepsThreshold: 90
+            depthSuccessThreshold: 90
+            form: 90
+            sets: 2
+            reps: 3
+            evalution: 4
+            setLogs:
+              - isSuccess:
+                  - 1
+                  - 1
+                  - 0
+                depth:
+                  - 45
+                  - 45
+                  - 60
+                form:
+                  - 45
+                  - 45
+                  - 60
+              - isSuccess:
+                  - 1
+                  - 1
+                  - 0
+                depth:
+                  - 45
+                  - 45
+                  - 60
+                form:
+                  - 45
+                  - 45
+                  - 60
+        aerobicLog:
+          aerobicNumber: 1
+          min: 40
+          max: 50
+          aerobicMotionNumbers: [1,2,3]
+          goalDurationMinutes: 30
+          actualDurationMinutes: 40
+          heatRates:
+            - 100
+            - 100
+            - 100
+
+
+    PatientDayTrainingLogs:
+      value:
+        - patientId: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+          finishedAt: '2019-01-14 13:14:18'
+          dayTrainingNumber: 1
+          evalution: 4
+          resistanceLogs:
+            - resistanceNumber: 1
+              name: プッシュアップ
+              label: 低強度
+              depthRepsThreshold: 90
+              depthSuccessThreshold: 90
+              form: 90
+              sets: 2
+              reps: 3
+              evalution: 4
+              setLogs:
+                - isSuccess:
+                    - 1
+                    - 1
+                    - 0
+                  depth:
+                    - 45
+                    - 45
+                    - 60
+                  form:
+                    - 41
+                    - 45
+                    - 60
+                - isSuccess:
+                    - 1
+                    - 1
+                    - 0
+                  depth:
+                    - 45
+                    - 45
+                    - 60
+                  form:
+                    - 45
+                    - 45
+                    - 60
+            - resistanceNumber: 1
+              name: プッシュアップ
+              label: 低強度
+              depthRepsThreshold: 90
+              depthSuccessThreshold: 90
+              form: 90
+              sets: 2
+              reps: 3
+              evalution: 4
+              setLogs:
+                - isSuccess:
+                    - 1
+                    - 1
+                    - 0
+                  depth:
+                    - 45
+                    - 45
+                    - 60
+                  form:
+                    - 45
+                    - 45
+                    - 60
+                - isSuccess:
+                    - 1
+                    - 1
+                    - 0
+                  depth:
+                    - 45
+                    - 45
+                    - 60
+                  form:
+                    - 45
+                    - 45
+                    - 60
+          aerobicLog:
+            aerobicNumber: 1
+            min: 40
+            max: 50
+            aerobicMotionNumbers: [1,2,3]
+            goalDurationMinutes: 30
+            actualDurationMinutes: 40
+            heatRates:
+              - 100
+              - 100
+              - 100
+        - patientId: 8c23f3d4-2446-43b0-b472-b6aa58899f59
+          finishedAt: '2019-01-14 13:14:18'
+          dayTrainingNumber: 1
+          evalution: 4
+          resistanceLogs:
+            - resistanceNumber: 1
+              name: プッシュアップ
+              label: 低強度
+              depthRepsThreshold: 90
+              depthSuccessThreshold: 90
+              form: 90
+              sets: 2
+              reps: 3
+              evalution: 4
+              setLogs:
+                - isSuccess:
+                    - 1
+                    - 1
+                    - 0
+                  depth:
+                    - 45
+                    - 45
+                    - 60
+                  form:
+                    - 41
+                    - 45
+                    - 60
+                - isSuccess:
+                    - 1
+                    - 1
+                    - 0
+                  depth:
+                    - 45
+                    - 45
+                    - 60
+                  form:
+                    - 45
+                    - 45
+                    - 60
+            - resistanceNumber: 1
+              name: プッシュアップ
+              label: 低強度
+              depthRepsThreshold: 90
+              depthSuccessThreshold: 90
+              form: 90
+              sets: 2
+              reps: 3
+              evalution: 4
+              setLogs:
+                - isSuccess:
+                    - 1
+                    - 1
+                    - 0
+                  depth:
+                    - 45
+                    - 45
+                    - 60
+                  form:
+                    - 45
+                    - 45
+                    - 60
+                - isSuccess:
+                    - 1
+                    - 1
+                    - 0
+                  depth:
+                    - 45
+                    - 45
+                    - 60
+                  form:
+                    - 45
+                    - 45
+                    - 60
+          aerobicLog:
+            aerobicNumber: 1
+            name: 有酸素運動1
+            label: 低強度
+            min: 40
+            max: 50
+            aerobicMotionNumbers: [1,2,3]
+            goalDurationMinutes: 30
+            actualDurationMinutes: 40
+            heatRates:
+              - 100
+              - 100
+              - 100
